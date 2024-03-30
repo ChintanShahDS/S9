@@ -947,7 +947,7 @@ class Net8_Group(nn.Module):
 
 class ConvBlock(nn.Module):
 
-    def __init__(self, inc, outc, dropout_value=0.1, pad=1, dilate=1, depthwise=True, last_layer=False):
+    def __init__(self, inc, outc, dropout_value=0.1, pad=1, dilate=1, stride=1, depthwise=True, last_layer=False):
         super(ConvBlock, self).__init__()
 
         if (depthwise):
@@ -998,21 +998,37 @@ class ConvBlock(nn.Module):
                 nn.Dropout(dropout_value),
             )
 
+        if (depthwise):
+            self.CN4 = nn.Sequential(
+                nn.Conv2d(in_channels=outc,out_channels=outc,kernel_size=3,padding=pad,groups=outc,bias=False),
+                nn.Conv2d(in_channels=outc,out_channels=outc,kernel_size=1,bias=False),
+                nn.BatchNorm2d(outc),
+                nn.ReLU(),
+                nn.Dropout(dropout_value),
+            )
+        else:
+            self.CN4 = nn.Sequential(
+                nn.Conv2d(in_channels=outc,out_channels=outc,kernel_size=3,padding=pad,bias=False),
+                nn.BatchNorm2d(outc),
+                nn.ReLU(),
+                nn.Dropout(dropout_value),
+            )
+
         if (last_layer):
             if (depthwise):
                 self.CNL = nn.Sequential(
-                    nn.Conv2d(in_channels=outc,out_channels=outc,kernel_size=3,padding=pad,groups=outc,bias=False),
+                    nn.Conv2d(in_channels=outc,out_channels=outc,kernel_size=3,stride=stride, padding=pad,groups=outc,bias=False),
                     nn.Conv2d(in_channels=outc,out_channels=outc,kernel_size=1,bias=False),
                 )
             else:
                 self.CNL = nn.Sequential(
-                    nn.Conv2d(in_channels=outc,out_channels=outc,kernel_size=3,padding=pad,bias=False),
+                    nn.Conv2d(in_channels=outc,out_channels=outc,kernel_size=3,padding=pad,stride=stride, bias=False),
                 )
         else:
           if (dilate > 1):
             if (depthwise):
               self.CNL = nn.Sequential(
-                  nn.Conv2d(in_channels=outc,out_channels=outc,kernel_size=3,padding=pad,dilation=2,groups=outc,bias=False),
+                  nn.Conv2d(in_channels=outc,out_channels=outc,kernel_size=3,padding=pad,stride=stride, dilation=2,groups=outc,bias=False),
                   nn.Conv2d(in_channels=outc,out_channels=outc,kernel_size=1,bias=False),
                   nn.BatchNorm2d(outc),
                   nn.ReLU(),
@@ -1020,7 +1036,7 @@ class ConvBlock(nn.Module):
               )
             else:
               self.CNL = nn.Sequential(
-                  nn.Conv2d(in_channels=outc,out_channels=outc,kernel_size=3,padding=pad,dilation=2,bias=False),
+                  nn.Conv2d(in_channels=outc,out_channels=outc,kernel_size=3,padding=pad,stride=stride, dilation=2,bias=False),
                   nn.BatchNorm2d(outc),
                   nn.ReLU(),
                   nn.Dropout(dropout_value),
@@ -1028,7 +1044,7 @@ class ConvBlock(nn.Module):
           else:
             if (depthwise):
               self.CNL = nn.Sequential(
-                  nn.Conv2d(in_channels=outc,out_channels=outc,kernel_size=3,padding=pad,groups=outc,bias=False),
+                  nn.Conv2d(in_channels=outc,out_channels=outc,kernel_size=3,padding=pad,stride=stride,groups=outc,bias=False),
                   nn.Conv2d(in_channels=outc,out_channels=outc,kernel_size=1,bias=False),
                   nn.BatchNorm2d(outc),
                   nn.ReLU(),
@@ -1036,7 +1052,7 @@ class ConvBlock(nn.Module):
               )
             else:
               self.CNL = nn.Sequential(
-                  nn.Conv2d(in_channels=outc,out_channels=outc,kernel_size=3,padding=pad,bias=False),
+                  nn.Conv2d(in_channels=outc,out_channels=outc,kernel_size=3,stride=stride, padding=pad,bias=False),
                   nn.BatchNorm2d(outc),
                   nn.ReLU(),
                   nn.Dropout(dropout_value),
@@ -1047,6 +1063,7 @@ class ConvBlock(nn.Module):
         x = self.CN1(x)
         x = self.CN2(x)
         x = self.CN3(x)
+        x = self.CN4(x)
         x = self.CNL(x)
 
         return x
@@ -1060,22 +1077,20 @@ class S9(nn.Module):
             nn.BatchNorm2d(8),
             nn.ReLU(),
             nn.Dropout(dropout_value),
-        )
+        )   # RF = 3    Output = 32
 
-        self.C1 = ConvBlock(8, 16, dropout_value=dropout_value, pad=1, dilate=1, depthwise=False,  last_layer=False)
-        self.C2 = ConvBlock(16, 64, dropout_value=dropout_value, pad=0, dilate=1, depthwise=True, last_layer=False)
-        self.C3 = ConvBlock(64, 128, dropout_value=dropout_value, pad=0, dilate=2, depthwise=True, last_layer=False)
-        self.CL = ConvBlock(128, 128, dropout_value=dropout_value, pad=0, dilate=1, depthwise=True, last_layer=True)
+        self.C1 = ConvBlock(8, 16, dropout_value=dropout_value, pad=1, stride=1, dilate=2, depthwise=False,  last_layer=False)  # RF = 15   Output = 30
+        self.C2 = ConvBlock(16, 32, dropout_value=dropout_value, pad=1, stride=1, dilate=2, depthwise=True, last_layer=False)   # RF = 39   Output = 28
+        self.C3 = ConvBlock(32, 64, dropout_value=dropout_value, pad=2, stride=2, dilate=2, depthwise=True, last_layer=False)   # RF = 87   Output = 18
+        self.CL = ConvBlock(64, 160, dropout_value=dropout_value, pad=0, stride=2, dilate=1, depthwise=True, last_layer=True)   # RF = 247  Output = 4
 
         self.gap = nn.Sequential(
-            nn.AvgPool2d(kernel_size=6) # 7>> 9... nn.AdaptiveAvgPool((1, 1))
+            nn.AvgPool2d(kernel_size=4) # 7>> 9... nn.AdaptiveAvgPool((1, 1))
         )
 
         self.conv11 = nn.Sequential(
-            nn.Conv2d(in_channels=128, out_channels=10, kernel_size=(1, 1), padding=0, bias=False),
-        ) # output_size = 1
-        # self.fc = nn.Linear(in_features=64,out_features=10)
-
+            nn.Conv2d(in_channels=160, out_channels=10, kernel_size=(1, 1), padding=0, bias=False),
+        ) # RF = 247
 
     def forward(self, x):
 
@@ -1089,4 +1104,3 @@ class S9(nn.Module):
         x = x.view(x.shape[0], -1)
 
         return F.log_softmax(x, dim=-1)
-        
